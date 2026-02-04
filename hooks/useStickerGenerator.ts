@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { generateBaseStickerOptions, generateMattePair, upscaleImage } from '../services/geminiService';
+import { generateBaseStickerOptions, generateMattePair, upscaleImage, parsePrompts } from '../services/geminiService';
 import { processDifferenceMatting } from '../utils/imageProcessing';
 import { StickerImage, GenerationTask } from '../types';
 
@@ -68,21 +68,45 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     processNextBatch();
   }, [generationQueue, isProcessingQueue]);
 
-  const generateStickers = useCallback(async (prompt: string) => {
+  const generateStickers = useCallback(async (rawInput: string) => {
     setError(undefined);
-    const batchId = Date.now();
     
-    // 1. Create placeholders immediately
-    const placeholders: StickerImage[] = Array(4).fill(null).map((_, i) => ({
-      id: `opt-${batchId}-${i}`,
-      status: 'generating_base',
-      prompt: prompt
-    }));
+    // Optimistically show loading or waiting state could be done here, 
+    // but since splitting is fast, we await it.
+    
+    let prompts: string[] = [];
+    try {
+      prompts = await parsePrompts(rawInput);
+    } catch (e) {
+      console.error("Splitting failed", e);
+      prompts = [rawInput];
+    }
 
-    setOptions(prev => [...placeholders, ...prev]);
+    if (prompts.length === 0) return;
 
-    // 2. Add to queue
-    setGenerationQueue(prev => [...prev, { batchId, prompt }]);
+    const timestamp = Date.now();
+    const newTasks: GenerationTask[] = [];
+    const allPlaceholders: StickerImage[] = [];
+
+    // Create tasks and placeholders for each prompt
+    prompts.forEach((prompt, index) => {
+      // Add index to timestamp to ensure unique batchIds for simultaneous submissions
+      const batchId = timestamp + index;
+      
+      newTasks.push({ batchId, prompt });
+
+      const placeholders = Array(4).fill(null).map((_, i) => ({
+        id: `opt-${batchId}-${i}`,
+        status: 'generating_base' as const,
+        prompt: prompt
+      }));
+      
+      allPlaceholders.push(...placeholders);
+    });
+
+    // Update state
+    setOptions(prev => [...allPlaceholders, ...prev]);
+    setGenerationQueue(prev => [...prev, ...newTasks]);
   }, []);
 
   const toggleStickerSelection = useCallback((id: string) => {

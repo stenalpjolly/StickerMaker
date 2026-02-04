@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -16,6 +16,44 @@ const ensurePaidApiKey = async () => {
       await win.aistudio.openSelectKey();
     }
   }
+};
+
+/**
+ * Intelligent Prompt Splitter using Flash Lite
+ */
+export const parsePrompts = async (rawInput: string): Promise<string[]> => {
+  const ai = getClient();
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-flash-lite-latest',
+      contents: {
+        parts: [
+          { text: "You are a helper for a sticker generation app. Analyze the user's input and break it down into a list of distinct, self-contained sticker descriptions. If the user describes multiple items (e.g. 'a cat, a dog, and a bird' or a paragraph describing several stickers), split them into separate strings. Clean up the prompts by removing request phrases like 'generate a', 'I want', 'make me'. Return a JSON array of strings." },
+          { text: `Input: "${rawInput}"` }
+        ]
+      },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      }
+    });
+
+    if (response.text) {
+      const parsed = JSON.parse(response.text);
+      if (Array.isArray(parsed)) {
+        return parsed.map(s => String(s).trim()).filter(s => s.length > 0);
+      }
+    }
+  } catch (error) {
+    console.warn("AI Prompt splitting failed, falling back to simple split.", error);
+  }
+
+  // Fallback: Split by newline
+  return rawInput.split('\n').map(p => p.trim()).filter(p => p.length > 0);
 };
 
 /**

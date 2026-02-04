@@ -56,7 +56,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               id="prompt"
               rows={4}
               className="w-full bg-slate-950 text-white rounded-xl border-slate-800 shadow-inner focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-lg p-4 resize-none placeholder:text-slate-600 transition-colors"
-              placeholder="e.g. A retro robot drinking coffee, vector art style"
+              placeholder="e.g. A retro robot drinking coffee&#10;For multiple stickers, paste a list (one prompt per line)"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               // Input remains enabled to allow queueing
