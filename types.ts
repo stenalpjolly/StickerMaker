@@ -1,15 +1,21 @@
+export interface GenerationTask {
+  batchId: number;
+  prompt: string;
+}
+
 export interface StickerImage {
   id: string;
-  original: string; // Starts as 1K, becomes 4K after upscaling
+  original?: string; // Optional during initial generation
   mask?: string;    // 4K black bg mask
   final?: string;   // 4K transparent result
-  status: 'idle' | 'upscaling' | 'generating_mask' | 'processing' | 'complete' | 'error';
+  status: 'generating_base' | 'idle' | 'upscaling' | 'generating_mask' | 'processing' | 'complete' | 'error';
+  prompt?: string;
 }
 
 export interface AppState {
-  isGeneratingBase: boolean;
+  activeRequests: number;
   options: StickerImage[];
-  selectedIds: string[]; // Changed from single ID to array
+  selectedIds: string[]; 
   error?: string;
 }
 

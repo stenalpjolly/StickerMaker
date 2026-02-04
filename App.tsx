@@ -1,22 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useStickerGenerator } from './hooks/useStickerGenerator';
 import { ControlPanel } from './components/ControlPanel';
 import { StickerGrid } from './components/StickerGrid';
+import { ImageModal } from './components/ImageModal';
+import { StickerImage } from './types';
 
 const App: React.FC = () => {
   const { 
     options, 
-    isGeneratingBase, 
+    activeRequests, 
+    generationQueue,
     selectedIds, 
     error,
     generateStickers, 
     toggleStickerSelection,
+    clearSelection,
+    clearSession,
     processSelectedStickers 
   } = useStickerGenerator();
 
-  const handleDownload = async () => {
+  const [zoomedImage, setZoomedImage] = useState<StickerImage | null>(null);
+
+  const handleDownload = () => {
     if (selectedIds.length === 0) return;
-    await processSelectedStickers();
+    
+    // Start processing in background
+    processSelectedStickers();
+    
+    // Clear selection immediately so user can select others
+    clearSelection();
   };
 
   return (
@@ -30,7 +42,7 @@ const App: React.FC = () => {
         <p className="text-lg text-slate-400">
           Create professional 4K transparent stickers with AI.
           <br className="hidden md:block"/>
-          Select multiple designs below to batch upscale and process.
+          Queue multiple prompts and batch process your favorites.
         </p>
       </header>
 
@@ -39,7 +51,9 @@ const App: React.FC = () => {
         <ControlPanel 
           onGenerate={generateStickers}
           onDownload={handleDownload}
-          isGenerating={isGeneratingBase}
+          onClear={clearSession}
+          activeRequests={activeRequests}
+          generationQueue={generationQueue}
           selectedCount={selectedIds.length}
           totalCount={options.length}
           options={options}
@@ -52,11 +66,17 @@ const App: React.FC = () => {
             options={options}
             selectedIds={selectedIds}
             onToggle={toggleStickerSelection}
-            isGenerating={isGeneratingBase}
+            onZoom={setZoomedImage}
+            onRegenerate={generateStickers}
           />
         </div>
 
       </div>
+
+      <ImageModal 
+        image={zoomedImage}
+        onClose={() => setZoomedImage(null)}
+      />
     </div>
   );
 };
