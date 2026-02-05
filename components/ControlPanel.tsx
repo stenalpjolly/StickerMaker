@@ -66,12 +66,23 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     return () => window.removeEventListener('paste', handlePaste);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const triggerSubmit = () => {
     if (prompt.trim()) {
       onGenerate(prompt, referenceImage, isRawMode);
       setPrompt(''); // Clear prompt after queueing
       // Note: We keep the reference image for subsequent prompts unless user clears it
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    triggerSubmit();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      triggerSubmit();
     }
   };
 
@@ -116,6 +127,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               placeholder="e.g. A retro robot drinking coffee&#10;For multiple stickers, paste a list (one prompt per line)"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={handleKeyDown}
             />
             <div className="mt-2 flex items-center gap-2">
               <input 
