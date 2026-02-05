@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './Button';
-import { StickerImage, GenerationTask } from '../types';
+import { StickerImage, GenerationTask, DownloadSize } from '../types';
 
 interface ControlPanelProps {
-  onGenerate: (prompt: string) => void;
+  onGenerate: (prompt: string, referenceImage?: string) => void;
   onDownload: () => void;
   onClear: () => void;
+  onSizeChange: (size: DownloadSize) => void;
+  downloadSize: DownloadSize;
   activeRequests: number;
   generationQueue: GenerationTask[];
   selectedCount: number;
@@ -19,6 +21,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onGenerate,
   onDownload,
   onClear,
+  onSizeChange,
+  downloadSize,
   activeRequests,
   generationQueue,
   selectedCount,
@@ -28,16 +32,68 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   error
 }) => {
   const [prompt, setPrompt] = useState('');
+  const [referenceImage, setReferenceImage] = useState<string | undefined>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle paste events globally
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            e.preventDefault();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const base64String = event.target?.result as string;
+              if (base64String) {
+                const rawBase64 = base64String.split(',')[1];
+                setReferenceImage(rawBase64);
+              }
+            };
+            reader.readAsDataURL(blob);
+            break; // Stop after first image found
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (prompt.trim()) {
-      onGenerate(prompt);
+      onGenerate(prompt, referenceImage);
       setPrompt(''); // Clear prompt after queueing
+      // Note: We keep the reference image for subsequent prompts unless user clears it
     }
   };
 
-  // Check if any selected option is currently processing (matting/upscaling)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        // Strip data url prefix if needed
+        const rawBase64 = base64String.split(',')[1];
+        setReferenceImage(rawBase64);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setReferenceImage(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Check if any selected option is currently processing
   const isProcessingDownload = options.some(opt => 
     selectedIds.includes(opt.id) && 
     (opt.status === 'upscaling' || opt.status === 'generating_mask' || opt.status === 'processing')
@@ -59,7 +115,52 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               placeholder="e.g. A retro robot drinking coffee&#10;For multiple stickers, paste a list (one prompt per line)"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              // Input remains enabled to allow queueing
+            />
+          </div>
+
+          {/* Reference Image Section */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-300">
+                Reference Image (Optional)
+              </label>
+              {referenceImage && (
+                <button 
+                  type="button" 
+                  onClick={handleRemoveImage}
+                  className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                  Remove
+                </button>
+              )}
+            </div>
+            
+            {!referenceImage ? (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-3 px-4 border-2 border-dashed border-slate-700 rounded-xl text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition-colors flex items-center justify-center gap-2 text-sm bg-slate-950/50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 6.187l-5.123 5.123a1.5 1.5 0 01-2.122-2.122L17.5 4" />
+                </svg>
+                Upload or Paste Image
+              </button>
+            ) : (
+              <div className="relative w-full h-20 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center gap-4 px-4">
+                 <img src={`data:image/png;base64,${referenceImage}`} alt="Reference" className="h-14 w-14 object-cover rounded-lg border border-slate-700" />
+                 <span className="text-xs text-slate-400">Image attached</span>
+              </div>
+            )}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept="image/*" 
+              onChange={handleFileChange}
             />
           </div>
           
@@ -103,8 +204,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <p className="text-sm text-slate-300 truncate font-medium" title={task.prompt}>
                     {task.prompt}
                   </p>
-                  <p className="text-[10px] text-slate-600">
+                  <p className="text-[10px] text-slate-600 flex items-center gap-2">
                     {index === 0 ? 'Generating...' : 'Waiting...'}
+                    {task.referenceImage && (
+                       <span className="text-indigo-400 bg-indigo-900/20 px-1 rounded flex items-center">
+                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                           <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909.47.47a.75.75 0 11-1.06 1.06L6.53 8.091a.75.75 0 00-1.06 0l-2.97 2.97zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                         </svg>
+                       </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -117,15 +225,38 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       {totalCount > 0 && (
         <div className="bg-slate-900 p-6 rounded-2xl shadow-xl border border-slate-800 animate-fade-in">
           <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">Download High Quality</h3>
-              <span className="text-xs font-mono text-indigo-400 bg-indigo-900/30 px-2 py-1 rounded border border-indigo-900/50">
-                4K Upscaling
-              </span>
+              <h3 className="text-lg font-bold text-white">Download Options</h3>
           </div>
           
-          <p className="text-slate-400 mb-6 text-sm">
+          <div className="mb-6">
+            <label className="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wide">
+              Resolution
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['1K', '2K', '4K'] as DownloadSize[]).map((size) => (
+                <button
+                  key={size}
+                  onClick={() => onSizeChange(size)}
+                  className={`
+                    py-2 rounded-lg text-sm font-semibold transition-all border
+                    ${downloadSize === size 
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/30' 
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                    }
+                  `}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              {downloadSize === '1K' ? 'Fast download, standard quality.' : 'High-fidelity upscale using Gemini Pro.'}
+            </p>
+          </div>
+          
+          <p className="text-slate-400 mb-4 text-sm">
             {selectedCount} sticker{selectedCount !== 1 ? 's' : ''} selected. 
-            Processing will upscale and remove backgrounds.
+            Will process and download at <strong>{downloadSize}</strong>.
           </p>
           
           <div className="flex flex-col gap-3">

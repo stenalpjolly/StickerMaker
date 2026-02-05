@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { generateBaseStickerOptions, generateMattePair, upscaleImage, parsePrompts } from '../services/geminiService';
 import { processDifferenceMatting } from '../utils/imageProcessing';
-import { StickerImage, GenerationTask } from '../types';
+import { StickerImage, GenerationTask, DownloadSize } from '../types';
 
 interface UseStickerGeneratorReturn {
   options: StickerImage[];
@@ -9,7 +9,9 @@ interface UseStickerGeneratorReturn {
   generationQueue: GenerationTask[];
   selectedIds: string[];
   error?: string;
-  generateStickers: (prompt: string) => Promise<void>;
+  downloadSize: DownloadSize;
+  setDownloadSize: (size: DownloadSize) => void;
+  generateStickers: (prompt: string, referenceImage?: string) => Promise<void>;
   toggleStickerSelection: (id: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
@@ -23,6 +25,7 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
   
   const [options, setOptions] = useState<StickerImage[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [downloadSize, setDownloadSize] = useState<DownloadSize>('4K');
   const [error, setError] = useState<string | undefined>();
 
   // Queue Processing Effect
@@ -34,7 +37,7 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
       const task = generationQueue[0];
 
       try {
-        const base64List = await generateBaseStickerOptions(task.prompt);
+        const base64List = await generateBaseStickerOptions(task.prompt, task.referenceImage);
         
         setOptions(prev => prev.map(opt => {
           if (opt.id.startsWith(`opt-${task.batchId}-`)) {
@@ -68,11 +71,8 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     processNextBatch();
   }, [generationQueue, isProcessingQueue]);
 
-  const generateStickers = useCallback(async (rawInput: string) => {
+  const generateStickers = useCallback(async (rawInput: string, referenceImage?: string) => {
     setError(undefined);
-    
-    // Optimistically show loading or waiting state could be done here, 
-    // but since splitting is fast, we await it.
     
     let prompts: string[] = [];
     try {
@@ -93,7 +93,7 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
       // Add index to timestamp to ensure unique batchIds for simultaneous submissions
       const batchId = timestamp + index;
       
-      newTasks.push({ batchId, prompt });
+      newTasks.push({ batchId, prompt, referenceImage });
 
       const placeholders = Array(4).fill(null).map((_, i) => ({
         id: `opt-${batchId}-${i}`,
@@ -153,31 +153,37 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     if (!option || !option.original) return;
 
     if (option.final) {
-      downloadImage(option.final, `sticker-4k-${id}.png`);
+      // If already processed, just download (NOTE: this ignores size changes if re-downloading, 
+      // but usually we want to regenerate if size changed. For simplicity, we assume one-time process.
+      // To support re-processing at different size, we would check metadata or allow reset.)
+      downloadImage(option.final, `sticker-${downloadSize}-${id}.png`);
       return;
     }
 
     try {
       updateOptionStatus(id, 'upscaling');
-      const highResOriginal = await upscaleImage(option.original);
       
+      // 1. Upscale/Resize
+      const highResOriginal = await upscaleImage(option.original, downloadSize);
       updateOptionStatus(id, 'generating_mask', { original: highResOriginal });
 
-      const maskBase64 = await generateMattePair(highResOriginal, true);
+      // 2. Generate Matte
+      const maskBase64 = await generateMattePair(highResOriginal, downloadSize);
       updateOptionStatus(id, 'processing', { mask: maskBase64 });
 
+      // 3. Difference Matting
       const result = await processDifferenceMatting(highResOriginal, maskBase64);
       const finalBase64 = result.dataUrl.split(',')[1];
 
       updateOptionStatus(id, 'complete', { final: finalBase64 });
       
-      downloadImage(finalBase64, `sticker-4k-${id}.png`);
+      downloadImage(finalBase64, `sticker-${downloadSize}-${id}.png`);
 
     } catch (err) {
       console.error(`Failed to process sticker ${id}`, err);
       updateOptionStatus(id, 'error');
     }
-  }, [options, updateOptionStatus]);
+  }, [options, updateOptionStatus, downloadSize]);
 
   const processSelectedStickers = useCallback(async () => {
     const idsToProcess = [...selectedIds];
@@ -191,6 +197,8 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     generationQueue,
     selectedIds,
     error,
+    downloadSize,
+    setDownloadSize,
     generateStickers,
     toggleStickerSelection,
     selectAll,

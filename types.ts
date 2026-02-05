@@ -1,13 +1,16 @@
+export type DownloadSize = '1K' | '2K' | '4K';
+
 export interface GenerationTask {
   batchId: number;
   prompt: string;
+  referenceImage?: string; // Base64 string of the uploaded reference
 }
 
 export interface StickerImage {
   id: string;
   original?: string; // Optional during initial generation
-  mask?: string;    // 4K black bg mask
-  final?: string;   // 4K transparent result
+  mask?: string;    // black bg mask
+  final?: string;   // transparent result
   status: 'generating_base' | 'idle' | 'upscaling' | 'generating_mask' | 'processing' | 'complete' | 'error';
   prompt?: string;
 }

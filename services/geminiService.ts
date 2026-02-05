@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { DownloadSize } from "../types";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -59,15 +60,29 @@ export const parsePrompts = async (rawInput: string): Promise<string[]> => {
 /**
  * Single generation request helper (Fast Preview - 1K)
  */
-const generateSingleBaseSticker = async (prompt: string): Promise<string> => {
+const generateSingleBaseSticker = async (prompt: string, referenceImage?: string): Promise<string> => {
   const ai = getClient();
   
-  const fullPrompt = `A high quality, isolated die-cut sticker of ${prompt}. Flat vector style, white border, centered on a solid white background (#FFFFFF). Ensure the background is pure white.`;
+  let fullPrompt = `A high quality, isolated die-cut sticker of ${prompt}. Flat vector style, white border, centered on a solid white background (#FFFFFF). Ensure the background is pure white.`;
+  
+  const parts: any[] = [];
+  
+  if (referenceImage) {
+    parts.push({
+      inlineData: {
+        mimeType: 'image/png', // Assumes PNG for consistency, though API handles others
+        data: referenceImage
+      }
+    });
+    fullPrompt += " Use the attached image as a visual reference for the subject.";
+  }
+  
+  parts.push({ text: fullPrompt });
 
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: {
-      parts: [{ text: fullPrompt }]
+      parts: parts
     },
     config: {
       imageConfig: {
@@ -88,31 +103,44 @@ const generateSingleBaseSticker = async (prompt: string): Promise<string> => {
 /**
  * Step 1: Generate 4 sticker options in parallel (Fast).
  */
-export const generateBaseStickerOptions = async (prompt: string): Promise<string[]> => {
-  const promises = Array(4).fill(null).map(() => generateSingleBaseSticker(prompt));
+export const generateBaseStickerOptions = async (prompt: string, referenceImage?: string): Promise<string[]> => {
+  const promises = Array(4).fill(null).map(() => generateSingleBaseSticker(prompt, referenceImage));
   return Promise.all(promises);
 };
 
 /**
- * Step 1.5: Upscale image to 4K (High Quality).
+ * Step 1.5: Upscale/Regenerate image to specific size (High Quality).
  */
-export const upscaleImage = async (base64: string): Promise<string> => {
-  await ensurePaidApiKey();
+export const upscaleImage = async (base64: string, size: DownloadSize = '4K'): Promise<string> => {
+  // If requesting > 1K, we use the Pro model which requires paid key check
+  if (size !== '1K') {
+    await ensurePaidApiKey();
+  }
+  
   const ai = getClient();
 
+  // If size is 1K, we can use flash-image, but for "upscaling" consistency we stick to Pro 
+  // if available for better fidelity, or use flash-image if sticking to free tier logic.
+  // However, `gemini-3-pro-image-preview` is the only one that supports explicit `imageSize`.
+  // `gemini-2.5-flash-image` defaults to 1K (approx 1024x1024).
+  
+  const model = size === '1K' ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
+  
+  // imageSize param is only supported on Pro
+  const imageConfig = size !== '1K' 
+    ? { imageSize: size, aspectRatio: '1:1' as const } 
+    : { aspectRatio: '1:1' as const };
+
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-image-preview',
+    model: model,
     contents: {
       parts: [
         { inlineData: { mimeType: 'image/png', data: base64 } },
-        { text: "Generate a high-fidelity, 4K resolution version of this sticker. Preserve the exact composition, colors, and subject details. Keep the background pure white." }
+        { text: `Generate a high-fidelity, ${size} resolution version of this sticker. Preserve the exact composition, colors, and subject details. Keep the background pure white.` }
       ]
     },
     config: {
-      imageConfig: {
-        imageSize: '4K',
-        aspectRatio: '1:1'
-      }
+      imageConfig
     }
   });
 
@@ -126,17 +154,18 @@ export const upscaleImage = async (base64: string): Promise<string> => {
 };
 
 /**
- * Step 2: Generate Matte Pair (supports 4K via Pro model).
+ * Step 2: Generate Matte Pair
  */
-export const generateMattePair = async (originalBase64: string, highQuality: boolean = false): Promise<string> => {
-  if (highQuality) {
+export const generateMattePair = async (originalBase64: string, size: DownloadSize = '4K'): Promise<string> => {
+  if (size !== '1K') {
     await ensurePaidApiKey();
   }
   const ai = getClient();
   
-  // Use Pro for 4K mask, Flash for 1K mask
-  const model = highQuality ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
-  const imageConfig = highQuality ? { imageSize: '4K' as const, aspectRatio: '1:1' as const } : undefined;
+  const model = size === '1K' ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
+  const imageConfig = size !== '1K' 
+    ? { imageSize: size, aspectRatio: '1:1' as const } 
+    : { aspectRatio: '1:1' as const };
 
   const response = await ai.models.generateContent({
     model: model,

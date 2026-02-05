@@ -12,6 +12,8 @@ const App: React.FC = () => {
     generationQueue,
     selectedIds, 
     error,
+    downloadSize,
+    setDownloadSize,
     generateStickers, 
     toggleStickerSelection,
     clearSelection,
@@ -52,6 +54,8 @@ const App: React.FC = () => {
           onGenerate={generateStickers}
           onDownload={handleDownload}
           onClear={clearSession}
+          onSizeChange={setDownloadSize}
+          downloadSize={downloadSize}
           activeRequests={activeRequests}
           generationQueue={generationQueue}
           selectedCount={selectedIds.length}
@@ -67,7 +71,7 @@ const App: React.FC = () => {
             selectedIds={selectedIds}
             onToggle={toggleStickerSelection}
             onZoom={setZoomedImage}
-            onRegenerate={generateStickers}
+            onRegenerate={(prompt) => generateStickers(prompt)}
           />
         </div>
 
