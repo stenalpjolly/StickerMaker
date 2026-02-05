@@ -11,7 +11,7 @@ interface UseStickerGeneratorReturn {
   error?: string;
   downloadSize: DownloadSize;
   setDownloadSize: (size: DownloadSize) => void;
-  generateStickers: (prompt: string, referenceImage?: string) => Promise<void>;
+  generateStickers: (prompt: string, referenceImage?: string, isRawMode?: boolean) => Promise<void>;
   toggleStickerSelection: (id: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
@@ -71,15 +71,22 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     processNextBatch();
   }, [generationQueue, isProcessingQueue]);
 
-  const generateStickers = useCallback(async (rawInput: string, referenceImage?: string) => {
+  const generateStickers = useCallback(async (rawInput: string, referenceImage?: string, isRawMode: boolean = false) => {
     setError(undefined);
     
     let prompts: string[] = [];
-    try {
-      prompts = await parsePrompts(rawInput);
-    } catch (e) {
-      console.error("Splitting failed", e);
-      prompts = [rawInput];
+    
+    if (isRawMode) {
+      // Split by newlines, but do NOT use AI parsing
+      prompts = rawInput.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+    } else {
+      try {
+        prompts = await parsePrompts(rawInput);
+      } catch (e) {
+        console.error("Splitting failed", e);
+        // Fallback to basic split if AI fails
+        prompts = rawInput.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+      }
     }
 
     if (prompts.length === 0) return;

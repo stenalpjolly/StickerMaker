@@ -3,7 +3,7 @@ import { Button } from './Button';
 import { StickerImage, GenerationTask, DownloadSize } from '../types';
 
 interface ControlPanelProps {
-  onGenerate: (prompt: string, referenceImage?: string) => void;
+  onGenerate: (prompt: string, referenceImage?: string, isRawMode?: boolean) => void;
   onDownload: () => void;
   onClear: () => void;
   onSizeChange: (size: DownloadSize) => void;
@@ -33,6 +33,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 }) => {
   const [prompt, setPrompt] = useState('');
   const [referenceImage, setReferenceImage] = useState<string | undefined>();
+  const [isRawMode, setIsRawMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle paste events globally
@@ -68,7 +69,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (prompt.trim()) {
-      onGenerate(prompt, referenceImage);
+      onGenerate(prompt, referenceImage, isRawMode);
       setPrompt(''); // Clear prompt after queueing
       // Note: We keep the reference image for subsequent prompts unless user clears it
     }
@@ -116,6 +117,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
             />
+            <div className="mt-2 flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="rawMode" 
+                checked={isRawMode}
+                onChange={(e) => setIsRawMode(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+              />
+              <label htmlFor="rawMode" className="text-xs text-slate-400 select-none cursor-pointer">
+                Skip AI parsing (use prompt exactly as written)
+              </label>
+            </div>
           </div>
 
           {/* Reference Image Section */}
