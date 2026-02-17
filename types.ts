@@ -15,6 +15,13 @@ export interface StickerImage {
   prompt?: string;
 }
 
+export interface HistoryItem {
+  batchId: number;
+  prompt: string;
+  timestamp: number;
+  images: StickerImage[];
+}
+
 export interface AppState {
   activeRequests: number;
   options: StickerImage[];

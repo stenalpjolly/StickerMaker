@@ -13,12 +13,14 @@ const App: React.FC = () => {
     selectedIds, 
     error,
     downloadSize,
+    history,
     setDownloadSize,
     generateStickers, 
     toggleStickerSelection,
     clearSelection,
     clearSession,
-    processSelectedStickers 
+    processSelectedStickers,
+    restoreFromHistory
   } = useStickerGenerator();
 
   const [zoomedImage, setZoomedImage] = useState<StickerImage | null>(null);
@@ -62,6 +64,8 @@ const App: React.FC = () => {
           totalCount={options.length}
           options={options}
           selectedIds={selectedIds}
+          history={history}
+          restoreFromHistory={restoreFromHistory}
           error={error}
         />
 

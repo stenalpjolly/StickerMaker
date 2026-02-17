@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { generateBaseStickerOptions, generateMattePair, upscaleImage, parsePrompts } from '../services/geminiService';
 import { processDifferenceMatting } from '../utils/imageProcessing';
-import { StickerImage, GenerationTask, DownloadSize } from '../types';
+import { StickerImage, GenerationTask, DownloadSize, HistoryItem } from '../types';
 
 interface UseStickerGeneratorReturn {
   options: StickerImage[];
@@ -10,6 +10,7 @@ interface UseStickerGeneratorReturn {
   selectedIds: string[];
   error?: string;
   downloadSize: DownloadSize;
+  history: HistoryItem[];
   setDownloadSize: (size: DownloadSize) => void;
   generateStickers: (prompt: string, referenceImage?: string, isRawMode?: boolean) => Promise<void>;
   toggleStickerSelection: (id: string) => void;
@@ -17,6 +18,7 @@ interface UseStickerGeneratorReturn {
   clearSelection: () => void;
   clearSession: () => void;
   processSelectedStickers: () => Promise<void>;
+  restoreFromHistory: (item: HistoryItem) => void;
 }
 
 export const useStickerGenerator = (): UseStickerGeneratorReturn => {
@@ -24,6 +26,7 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
   const [isProcessingQueue, setIsProcessingQueue] = useState(false);
   
   const [options, setOptions] = useState<StickerImage[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [downloadSize, setDownloadSize] = useState<DownloadSize>('4K');
   const [error, setError] = useState<string | undefined>();
@@ -39,6 +42,7 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
       try {
         const base64List = await generateBaseStickerOptions(task.prompt, task.referenceImage);
         
+        // Update active options
         setOptions(prev => prev.map(opt => {
           if (opt.id.startsWith(`opt-${task.batchId}-`)) {
             const indexParts = opt.id.split('-');
@@ -51,16 +55,43 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
           }
           return opt;
         }));
+
+        // Update history entry with the generated images
+        setHistory(prev => prev.map(item => {
+          if (item.batchId === task.batchId) {
+            const updatedImages = item.images.map((img, idx) => ({
+              ...img,
+              original: base64List[idx],
+              status: 'idle' as const
+            }));
+            return { ...item, images: updatedImages };
+          }
+          return item;
+        }));
+
       } catch (err) {
         console.error(err);
         setError('Failed to generate a batch. Please try again.');
-        // Mark placeholders as error
+        
+        // Mark placeholders as error in options
         setOptions(prev => prev.map(opt => {
           if (opt.id.startsWith(`opt-${task.batchId}-`)) {
             return { ...opt, status: 'error' };
           }
           return opt;
         }));
+
+        // Mark in history too
+        setHistory(prev => prev.map(item => {
+           if (item.batchId === task.batchId) {
+             return {
+               ...item,
+               images: item.images.map(img => ({ ...img, status: 'error' }))
+             };
+           }
+           return item;
+        }));
+
       } finally {
         // Remove processed task and continue
         setGenerationQueue(prev => prev.slice(1));
@@ -109,6 +140,14 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
       }));
       
       allPlaceholders.push(...placeholders);
+
+      // Add to history immediately
+      setHistory(prev => [{
+        batchId,
+        prompt,
+        timestamp,
+        images: placeholders
+      }, ...prev]);
     });
 
     // Update state
@@ -144,6 +183,14 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     setError(undefined);
   }, []);
 
+  const restoreFromHistory = useCallback((item: HistoryItem) => {
+    setOptions(prev => {
+      const existingIds = new Set(prev.map(o => o.id));
+      const newItems = item.images.filter(img => !existingIds.has(img.id));
+      return [...newItems, ...prev];
+    });
+  }, []);
+
   const updateOptionStatus = useCallback((id: string, status: StickerImage['status'], extraData: Partial<StickerImage> = {}) => {
     setOptions(prev => {
       const newOptions = [...prev];
@@ -160,9 +207,7 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     if (!option || !option.original) return;
 
     if (option.final) {
-      // If already processed, just download (NOTE: this ignores size changes if re-downloading, 
-      // but usually we want to regenerate if size changed. For simplicity, we assume one-time process.
-      // To support re-processing at different size, we would check metadata or allow reset.)
+      // If already processed, just download
       downloadImage(option.final, `sticker-${downloadSize}-${id}.png`);
       return;
     }
@@ -205,13 +250,15 @@ export const useStickerGenerator = (): UseStickerGeneratorReturn => {
     selectedIds,
     error,
     downloadSize,
+    history,
     setDownloadSize,
     generateStickers,
     toggleStickerSelection,
     selectAll,
     clearSelection,
     clearSession,
-    processSelectedStickers
+    processSelectedStickers,
+    restoreFromHistory
   };
 };
 

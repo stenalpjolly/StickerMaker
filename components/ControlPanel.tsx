@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './Button';
-import { StickerImage, GenerationTask, DownloadSize } from '../types';
+import { StickerImage, GenerationTask, DownloadSize, HistoryItem } from '../types';
 
 interface ControlPanelProps {
   onGenerate: (prompt: string, referenceImage?: string, isRawMode?: boolean) => void;
@@ -14,6 +14,8 @@ interface ControlPanelProps {
   totalCount: number;
   options: StickerImage[];
   selectedIds: string[];
+  history: HistoryItem[];
+  restoreFromHistory: (item: HistoryItem) => void;
   error?: string;
 }
 
@@ -29,8 +31,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   totalCount,
   options,
   selectedIds,
+  history,
+  restoreFromHistory,
   error
 }) => {
+  const [activeTab, setActiveTab] = useState<'create' | 'history'>('create');
   const [prompt, setPrompt] = useState('');
   const [referenceImage, setReferenceImage] = useState<string | undefined>();
   const [isRawMode, setIsRawMode] = useState(false);
@@ -105,6 +110,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const reusePrompt = (text: string) => {
+    setPrompt(text);
+    setActiveTab('create');
+  };
+
   // Check if any selected option is currently processing
   const isProcessingDownload = options.some(opt => 
     selectedIds.includes(opt.id) && 
@@ -112,143 +122,225 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   );
 
   return (
-    <div className="w-full lg:w-1/3 flex flex-col gap-6 order-2 lg:order-1 sticky top-8">
-      {/* Input Panel */}
-      <div className="bg-slate-900 p-6 rounded-2xl shadow-xl border border-slate-800">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <div>
-            <label htmlFor="prompt" className="block text-sm font-medium text-slate-300 mb-2">
-              Describe your sticker idea
-            </label>
-            <textarea
-              id="prompt"
-              rows={4}
-              className="w-full bg-slate-950 text-white rounded-xl border-slate-800 shadow-inner focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-lg p-4 resize-none placeholder:text-slate-600 transition-colors"
-              placeholder="e.g. A retro robot drinking coffee&#10;For multiple stickers, paste a list (one prompt per line)"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <div className="mt-2 flex items-center gap-2">
-              <input 
-                type="checkbox" 
-                id="rawMode" 
-                checked={isRawMode}
-                onChange={(e) => setIsRawMode(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
-              />
-              <label htmlFor="rawMode" className="text-xs text-slate-400 select-none cursor-pointer">
-                Skip AI parsing (use prompt exactly as written)
-              </label>
-            </div>
-          </div>
-
-          {/* Reference Image Section */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-slate-300">
-                Reference Image (Optional)
-              </label>
-              {referenceImage && (
-                <button 
-                  type="button" 
-                  onClick={handleRemoveImage}
-                  className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                  </svg>
-                  Remove
-                </button>
-              )}
-            </div>
-            
-            {!referenceImage ? (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full py-3 px-4 border-2 border-dashed border-slate-700 rounded-xl text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition-colors flex items-center justify-center gap-2 text-sm bg-slate-950/50"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 6.187l-5.123 5.123a1.5 1.5 0 01-2.122-2.122L17.5 4" />
-                </svg>
-                Upload or Paste Image
-              </button>
-            ) : (
-              <div className="relative w-full h-20 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center gap-4 px-4">
-                 <img src={`data:image/png;base64,${referenceImage}`} alt="Reference" className="h-14 w-14 object-cover rounded-lg border border-slate-700" />
-                 <span className="text-xs text-slate-400">Image attached</span>
-              </div>
-            )}
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept="image/*" 
-              onChange={handleFileChange}
-            />
-          </div>
-          
-          <Button 
-            type="submit" 
-            className="w-full py-4 text-lg relative"
-            disabled={!prompt.trim()}
-          >
-            {activeRequests > 0 && (
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
-              </span>
-            )}
-            {activeRequests > 0 ? `Queue Another (${activeRequests} active)` : 'Generate Stickers'}
-          </Button>
-        </form>
+    <div className="w-full lg:w-1/3 flex flex-col gap-6 order-2 lg:order-1 sticky top-8 max-h-[calc(100vh-4rem)]">
+      
+      {/* Tabs */}
+      <div className="flex bg-slate-900 rounded-2xl p-1 border border-slate-800 shadow-lg">
+        <button 
+          onClick={() => setActiveTab('create')}
+          className={`flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all ${activeTab === 'create' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+        >
+          Create
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          className={`flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+        >
+          History
+        </button>
       </div>
 
-      {/* Queue Section */}
-      {generationQueue.length > 0 && (
-        <div className="bg-slate-900 p-4 rounded-2xl shadow-xl border border-slate-800 animate-fade-in">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Queue</h3>
-            <span className="text-xs font-mono text-slate-500">{generationQueue.length} pending</span>
-          </div>
-          <div className="flex flex-col gap-2 max-h-60 overflow-y-auto custom-scrollbar">
-            {generationQueue.map((task, index) => (
-              <div key={task.batchId} className="flex items-center gap-3 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
-                <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-slate-900 border border-slate-800">
-                  {index === 0 ? (
-                    <svg className="animate-spin h-4 w-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <span className="text-xs font-mono text-slate-600">#{index + 1}</span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-300 truncate font-medium" title={task.prompt}>
-                    {task.prompt}
-                  </p>
-                  <p className="text-[10px] text-slate-600 flex items-center gap-2">
-                    {index === 0 ? 'Generating...' : 'Waiting...'}
-                    {task.referenceImage && (
-                       <span className="text-indigo-400 bg-indigo-900/20 px-1 rounded flex items-center">
-                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                           <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909.47.47a.75.75 0 11-1.06 1.06L6.53 8.091a.75.75 0 00-1.06 0l-2.97 2.97zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
-                         </svg>
-                       </span>
-                    )}
-                  </p>
+      {activeTab === 'create' && (
+        <>
+          {/* Input Panel */}
+          <div className="bg-slate-900 p-6 rounded-2xl shadow-xl border border-slate-800 animate-fade-in">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+              <div>
+                <label htmlFor="prompt" className="block text-sm font-medium text-slate-300 mb-2">
+                  Describe your sticker idea
+                </label>
+                <textarea
+                  id="prompt"
+                  rows={4}
+                  className="w-full bg-slate-950 text-white rounded-xl border-slate-800 shadow-inner focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-lg p-4 resize-none placeholder:text-slate-600 transition-colors"
+                  placeholder="e.g. A retro robot drinking coffee&#10;For multiple stickers, paste a list (one prompt per line)"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="rawMode" 
+                    checked={isRawMode}
+                    onChange={(e) => setIsRawMode(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                  />
+                  <label htmlFor="rawMode" className="text-xs text-slate-400 select-none cursor-pointer">
+                    Skip AI parsing (use prompt exactly as written)
+                  </label>
                 </div>
               </div>
-            ))}
+
+              {/* Reference Image Section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-300">
+                    Reference Image (Optional)
+                  </label>
+                  {referenceImage && (
+                    <button 
+                      type="button" 
+                      onClick={handleRemoveImage}
+                      className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                        <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                      </svg>
+                      Remove
+                    </button>
+                  )}
+                </div>
+                
+                {!referenceImage ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-3 px-4 border-2 border-dashed border-slate-700 rounded-xl text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition-colors flex items-center justify-center gap-2 text-sm bg-slate-950/50"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 6.187l-5.123 5.123a1.5 1.5 0 01-2.122-2.122L17.5 4" />
+                    </svg>
+                    Upload or Paste Image
+                  </button>
+                ) : (
+                  <div className="relative w-full h-20 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center gap-4 px-4">
+                     <img src={`data:image/png;base64,${referenceImage}`} alt="Reference" className="h-14 w-14 object-cover rounded-lg border border-slate-700" />
+                     <span className="text-xs text-slate-400">Image attached</span>
+                  </div>
+                )}
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={handleFileChange}
+                />
+              </div>
+              
+              <Button 
+                type="submit" 
+                className="w-full py-4 text-lg relative"
+                disabled={!prompt.trim()}
+              >
+                {activeRequests > 0 && (
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                  </span>
+                )}
+                {activeRequests > 0 ? `Queue Another (${activeRequests} active)` : 'Generate Stickers'}
+              </Button>
+            </form>
           </div>
-        </div>
+
+          {/* Queue Section */}
+          {generationQueue.length > 0 && (
+            <div className="bg-slate-900 p-4 rounded-2xl shadow-xl border border-slate-800 animate-fade-in">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Queue</h3>
+                <span className="text-xs font-mono text-slate-500">{generationQueue.length} pending</span>
+              </div>
+              <div className="flex flex-col gap-2 max-h-60 overflow-y-auto custom-scrollbar">
+                {generationQueue.map((task, index) => (
+                  <div key={task.batchId} className="flex items-center gap-3 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
+                    <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-slate-900 border border-slate-800">
+                      {index === 0 ? (
+                        <svg className="animate-spin h-4 w-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <span className="text-xs font-mono text-slate-600">#{index + 1}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-300 truncate font-medium" title={task.prompt}>
+                        {task.prompt}
+                      </p>
+                      <p className="text-[10px] text-slate-600 flex items-center gap-2">
+                        {index === 0 ? 'Generating...' : 'Waiting...'}
+                        {task.referenceImage && (
+                           <span className="text-indigo-400 bg-indigo-900/20 px-1 rounded flex items-center">
+                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                               <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909.47.47a.75.75 0 11-1.06 1.06L6.53 8.091a.75.75 0 00-1.06 0l-2.97 2.97zM12 7a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                             </svg>
+                           </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Action Panel */}
+      {activeTab === 'history' && (
+         <div className="bg-slate-900 p-4 rounded-2xl shadow-xl border border-slate-800 animate-fade-in flex-1 overflow-hidden flex flex-col">
+            {history.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 py-10 text-center">
+                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 mb-2 opacity-50">
+                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                 </svg>
+                 <p className="text-sm">No history yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-y-auto custom-scrollbar flex flex-col gap-4">
+                 {history.map((item) => (
+                   <div key={item.batchId} className="bg-slate-950/50 rounded-xl p-3 border border-slate-800/50 group">
+                      <div className="flex justify-between items-start mb-2">
+                         <p className="text-sm text-slate-300 font-medium line-clamp-2 leading-snug flex-1 mr-2">{item.prompt}</p>
+                         <span className="text-[10px] text-slate-600 whitespace-nowrap">{new Date(item.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                      </div>
+                      
+                      {/* Grid of previews */}
+                      <div className="grid grid-cols-4 gap-1 mb-3">
+                         {item.images.slice(0, 4).map((img, i) => (
+                           <div key={i} className="aspect-square bg-slate-900 rounded overflow-hidden relative">
+                              {img.original ? (
+                                <img src={`data:image/png;base64,${img.original}`} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-slate-800/50">
+                                   <div className="w-2 h-2 rounded-full bg-slate-700 animate-pulse" />
+                                </div>
+                              )}
+                           </div>
+                         ))}
+                      </div>
+
+                      <div className="flex gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button 
+                           onClick={() => restoreFromHistory(item)}
+                           className="flex-1 py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition-colors border border-slate-700 hover:border-slate-600 flex items-center justify-center gap-1.5"
+                        >
+                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                             <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                           </svg>
+                           Restore
+                        </button>
+                        <button 
+                           onClick={() => reusePrompt(item.prompt)}
+                           className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs rounded-lg transition-colors border border-slate-700 hover:border-slate-600"
+                           title="Reuse Prompt"
+                        >
+                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                             <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
+                             <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
+                           </svg>
+                        </button>
+                      </div>
+                   </div>
+                 ))}
+              </div>
+            )}
+         </div>
+      )}
+
+      {/* Action Panel (Always visible if selection active) */}
       {totalCount > 0 && (
-        <div className="bg-slate-900 p-6 rounded-2xl shadow-xl border border-slate-800 animate-fade-in">
+        <div className="bg-slate-900 p-6 rounded-2xl shadow-xl border border-slate-800 animate-fade-in mt-auto">
           <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white">Download Options</h3>
           </div>
