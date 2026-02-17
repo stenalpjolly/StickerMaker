@@ -4,7 +4,7 @@ import { StickerImage } from '../types';
 interface StickerDisplayProps {
   image: StickerImage;
   isSelected: boolean;
-  onClick: () => void;
+  onToggle: () => void;
   onZoom: () => void;
   onRegenerate: () => void;
 }
@@ -12,7 +12,7 @@ interface StickerDisplayProps {
 export const StickerDisplay: React.FC<StickerDisplayProps> = ({ 
   image, 
   isSelected, 
-  onClick, 
+  onToggle, 
   onZoom, 
   onRegenerate 
 }) => {
@@ -23,8 +23,8 @@ export const StickerDisplay: React.FC<StickerDisplayProps> = ({
   const isProcessing = status === 'upscaling' || status === 'generating_mask' || status === 'processing';
 
   let statusText = '';
-  if (status === 'upscaling') statusText = 'Upscaling to 4K...';
-  else if (status === 'generating_mask') statusText = 'Designing Mask...';
+  if (status === 'upscaling') statusText = 'Upscaling...';
+  else if (status === 'generating_mask') statusText = 'Masking...';
   else if (status === 'processing') statusText = 'Matting...';
 
   const handleAction = (e: React.MouseEvent, action: () => void) => {
@@ -34,12 +34,13 @@ export const StickerDisplay: React.FC<StickerDisplayProps> = ({
 
   return (
     <div 
-      onClick={onClick}
+      onClick={onZoom}
       className={`
         relative w-full aspect-square rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 group
+        bg-slate-900 border border-slate-800
         ${isSelected 
-          ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-slate-950 scale-[1.02] shadow-2xl shadow-indigo-900/20' 
-          : 'ring-1 ring-slate-800 hover:ring-slate-600 hover:scale-[1.01]'
+          ? 'ring-2 ring-indigo-500 bg-indigo-900/10' 
+          : 'hover:border-slate-600'
         }
       `}
     >
@@ -52,7 +53,7 @@ export const StickerDisplay: React.FC<StickerDisplayProps> = ({
         <img 
           src={`data:image/png;base64,${activeImage}`} 
           alt="Generated Sticker" 
-          className="relative z-10 w-full h-full object-contain p-2"
+          className={`relative z-10 w-full h-full object-contain p-2 transition-transform duration-500 ${isSelected ? 'scale-90' : 'group-hover:scale-105'}`}
         />
       )}
 
@@ -69,25 +70,33 @@ export const StickerDisplay: React.FC<StickerDisplayProps> = ({
         </div>
       )}
       
-      {/* Actions Overlay (Visible on Hover) */}
-      <div className="absolute inset-0 z-30 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-         <button
-            onClick={(e) => handleAction(e, onZoom)}
-            className="p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full text-white border border-white/20 shadow-xl transition-transform hover:scale-110"
-            title="Zoom Image"
-         >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-            </svg>
-         </button>
-         
+      {/* Selection Circle (Google Photos style) - Top Left */}
+      <div 
+        onClick={(e) => handleAction(e, onToggle)}
+        className={`
+          absolute top-3 left-3 z-40 w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 border-2
+          ${isSelected 
+            ? 'bg-indigo-600 border-indigo-600 text-white opacity-100 scale-100 shadow-lg' 
+            : 'bg-black/20 border-white/70 hover:bg-black/40 hover:border-white opacity-0 group-hover:opacity-100 scale-90 hover:scale-105'
+          }
+        `}
+      >
+        {isSelected && (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+        )}
+      </div>
+
+      {/* Actions Overlay (Visible on Hover) - Only Regenerate now */}
+      <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity">
          {prompt && (
            <button
               onClick={(e) => handleAction(e, onRegenerate)}
-              className="p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full text-white border border-white/20 shadow-xl transition-transform hover:scale-110"
+              className="p-2 bg-slate-900/80 hover:bg-indigo-600 backdrop-blur-md rounded-lg text-white border border-white/10 shadow-lg transition-colors pointer-events-auto"
               title="Regenerate this prompt"
            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
               </svg>
            </button>
@@ -97,23 +106,10 @@ export const StickerDisplay: React.FC<StickerDisplayProps> = ({
       {/* Top Right Status Badges */}
       <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-2 pointer-events-none">
         {isTransparent && (
-          <span className="bg-emerald-500 text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md shadow-lg border border-emerald-400/50">
-            4K Transparent
+          <span className="bg-emerald-500/90 backdrop-blur-sm text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md shadow-lg border border-emerald-400/50">
+            4K
           </span>
         )}
-        
-        {/* Selection Indicator (Always visible if selected) */}
-        <div className={`
-          rounded-full p-1.5 shadow-lg transition-all duration-200
-          ${isSelected 
-            ? 'bg-indigo-600 text-white scale-100 opacity-100' 
-            : 'bg-slate-800/80 text-slate-500 scale-90 opacity-0'
-          }
-        `}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-        </div>
       </div>
     </div>
   );

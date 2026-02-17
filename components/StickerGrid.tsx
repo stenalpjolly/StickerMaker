@@ -56,7 +56,7 @@ export const StickerGrid: React.FC<StickerGridProps> = ({
             key={option.id}
             image={option}
             isSelected={selectedIds.includes(option.id)}
-            onClick={() => onToggle(option.id)}
+            onToggle={() => onToggle(option.id)}
             onZoom={() => onZoom(option)}
             onRegenerate={() => option.prompt && onRegenerate(option.prompt)}
           />
